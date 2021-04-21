@@ -193,6 +193,32 @@ var _ = Describe("Client", func() {
 		Expect(cmd.Val()).To(Equal("PONG"))
 	})
 
+	It("processes custom commands with raw response", func() {
+		cmd := redis.NewCmdWithRawResponse(ctx, "PING")
+		_ = client.Process(ctx, cmd)
+
+		// Flush buffers.
+		Expect(client.Echo(ctx, "hello").Err()).NotTo(HaveOccurred())
+
+		Expect(cmd.Err()).NotTo(HaveOccurred())
+		Expect(cmd.Val()).To(Equal("PONG"))
+		Expect(cmd.RawResponse()).To(Equal([]byte("+PONG\r\n")))
+	})
+
+	It("processes custom commands with array raw response", func() {
+		_ = client.MSet(ctx, "key1", "a", "key2", "b")
+
+		cmd := redis.NewCmdWithRawResponse(ctx, "MGET", "key1", "key3", "key2")
+		_ = client.Process(ctx, cmd)
+
+		// Flush buffers.
+		Expect(client.Echo(ctx, "hello").Err()).NotTo(HaveOccurred())
+
+		Expect(cmd.Err()).NotTo(HaveOccurred())
+		Expect(cmd.Val()).To(Equal([]interface{}{"a", nil, "b"}))
+		Expect(string(cmd.RawResponse())).To(Equal("*3\r\n$1\r\na\r\n$-1\r\n$1\r\nb\r\n"))
+	})
+
 	It("should retry command on network error", func() {
 		Expect(client.Close()).NotTo(HaveOccurred())
 

@@ -343,6 +343,67 @@ func sliceParser(rd *proto.Reader, n int64) (interface{}, error) {
 
 //------------------------------------------------------------------------------
 
+type CmdWithRawResponse struct {
+	baseCmd
+
+	val         interface{}
+	rawResponse []byte
+}
+
+func NewCmdWithRawResponse(ctx context.Context, args ...interface{}) *CmdWithRawResponse {
+	return &CmdWithRawResponse{
+		baseCmd: baseCmd{
+			ctx:  ctx,
+			args: args,
+		},
+	}
+}
+
+func (cmd *CmdWithRawResponse) readReply(rd *proto.Reader) (err error) {
+	cmd.val, cmd.rawResponse, err = rd.ReadReplyWithRawResponse(sliceParserWithRawResponse)
+	return err
+}
+
+func (cmd *CmdWithRawResponse) Val() interface{} {
+	return cmd.val
+}
+
+func (cmd *CmdWithRawResponse) Result() (interface{}, error) {
+	return cmd.val, cmd.err
+}
+
+func (cmd *CmdWithRawResponse) String() string {
+	return cmdString(cmd, cmd.val)
+}
+
+func (cmd *CmdWithRawResponse) RawResponse() []byte {
+	return cmd.rawResponse
+}
+
+// sliceParserWithRawResponse implements proto.MultiBulkParseWithRawResponse.
+func sliceParserWithRawResponse(rd *proto.Reader, n int64, line []byte) (interface{}, []byte, error) {
+	vals := make([]interface{}, n)
+	for i := 0; i < len(vals); i++ {
+		v, l, err := rd.ReadReplyWithRawResponse(sliceParserWithRawResponse)
+		line = append(line, l...)
+		if err != nil {
+			if err == Nil {
+				vals[i] = nil
+				continue
+			}
+			if err, ok := err.(proto.RedisError); ok {
+				vals[i] = err
+				continue
+			}
+			return nil, line, err
+		}
+		vals[i] = v
+	}
+	return vals, line, nil
+}
+
+//------------------------------------------------------------------------------
+
 type SliceCmd struct {
 	baseCmd
 

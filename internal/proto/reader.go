@@ -121,6 +121,58 @@ func (r *Reader) ReadReply(m MultiBulkParse) (interface{}, error) {
 	return nil, fmt.Errorf("redis: can't parse %.100q", line)
 }
 
+func (r *Reader) ReadRawLine() ([]byte, error) {
+	line, err := r.readLine()
+	if err != nil {
+		return nil, err
+	}
+	return line, nil
+}
+
+type MultiBulkParseWithRawResponse func(*Reader, int64, []byte) (interface{}, []byte, error)
+
+func (r *Reader) ReadReplyWithRawResponse(m MultiBulkParseWithRawResponse) (interface{}, []byte, error) {
+	line, err := r.ReadRawLine()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rawLine := make([]byte, len(line), len(line)+2)
+	copy(rawLine, line)
+	rawLine = append(rawLine, '\r', '\n')
+
+	if isNilReply(line) {
+		return nil, rawLine, Nil
+	}
+
+	switch line[0] {
+	case ErrorReply:
+		return nil, rawLine, ParseErrorReply(line)
+	case StatusReply:
+		return string(line[1:]), rawLine, nil
+	case IntReply:
+		res, err := util.ParseInt(line[1:], 10, 64)
+		return res, rawLine, err
+	case StringReply:
+		res, err := r.readStringReply(line)
+		rawLine = append(rawLine, res...)
+		rawLine = append(rawLine, '\r', '\n')
+		return res, rawLine, err
+	case ArrayReply:
+		n, err := parseArrayLen(line)
+		if err != nil {
+			return nil, rawLine, err
+		}
+		if m == nil {
+			err := fmt.Errorf("redis: got %.100q, but multi bulk parser is nil", line)
+			return nil, rawLine, err
+		}
+		return m(r, n, rawLine)
+	}
+	return nil, rawLine, fmt.Errorf("redis: can't parse %.100q", line)
+}
+
+
 func (r *Reader) ReadIntReply() (int64, error) {
 	line, err := r.ReadLine()
 	if err != nil {
