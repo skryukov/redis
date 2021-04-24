@@ -137,7 +137,7 @@ func (r *Reader) ReadReplyWithRawResponse(m MultiBulkParseWithRawResponse) (inte
 		return nil, nil, err
 	}
 
-	rawLine := make([]byte, len(line), len(line)+2)
+	rawLine := make([]byte, len(line), 64)
 	copy(rawLine, line)
 	rawLine = append(rawLine, '\r', '\n')
 
